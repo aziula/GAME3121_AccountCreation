@@ -1,4 +1,3 @@
-
 /*
 This RPG data streaming assignment was created by Fernando Restituto with 
 pixel RPG characters created by Sean Browning.
@@ -8,39 +7,15 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-using System.IO;   // needed for StreamWriter and StreamReader
-
+using System.IO;   // StreamWriter / StreamReader
 using System.Text;
 using System.Security.Cryptography;
 
-
 #region Assignment Instructions
+// (omitted for brevity)
+#endregion
 
-/*  Hello!  Welcome to your first lab :)
-
-Wax on, wax off.
-
-    The development of saving and loading systems shares much in common with that of networked gameplay development.  
-    Both involve developing around data which is packaged and passed into (or gotten from) a stream.  
-    Thus, prior to attacking the problems of development for networked games, you will strengthen your abilities to develop solutions using the easier to work with HD saving/loading frameworks.
-
-    Try to understand not just the framework tools, but also, 
-    seek to familiarize yourself with how we are able to break data down, pass it into a stream and then rebuild it from another stream.
-
-
-Lab Part 1
-
-    Begin by exploring the UI elements that you are presented with upon hitting play.
-    You can roll a new party, view party stats and hit a save and load button, both of which do nothing.
-    You are challenged to create the functions that will save and load the party data which is being displayed on screen for you.
-
-    Below, a SavePartyButtonPressed and a LoadPartyButtonPressed function are provided for you.
-    Both are being called by the internal systems when the respective button is hit.
-    You must code the save/load functionality.
-    Access to Party Character data is provided via demo usage in the save and load functions.
-
-    The PartyCharacter class members are defined as follows.  */
-
+// ---------- PartyCharacter (shared model) ----------
 public partial class PartyCharacter
 {
     public int classID;
@@ -53,42 +28,45 @@ public partial class PartyCharacter
     public int wisdom;
 
     public LinkedList<int> equipment;
-
 }
 
-
-/*
-    Access to the on screen party data can be achieved via …..
-
-    Once you have loaded party data from the HD, you can have it loaded on screen via …...
-
-    These are the stream reader/writer that I want you to use.
-    https://docs.microsoft.com/en-us/dotnet/api/system.io.streamwriter
-    https://docs.microsoft.com/en-us/dotnet/api/system.io.streamreader
-
-    Alright, that’s all you need to get started on the first part of this assignment, here are your functions, good luck and journey well!
-*/
-
-
-#endregion
-
-
 #region Assignment Part 1
-
 static public class AssignmentPart1
 {
-    private static string SavePath =>
-        Path.Combine(Application.persistentDataPath, "party_save.txt");
+    // --- per-account save path (ties saves to LoginManager.CurrentUser) ---
+    private static string Safe(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "guest";
+        foreach (var bad in Path.GetInvalidFileNameChars())
+            s = s.Replace(bad, '_');
+        return s.Trim();
+    }
+    private static string CurrentUserOrGuest => Safe(LoginManager.CurrentUser);
 
-    // Save the current party to disk
+    private static string UserRoot =>
+        Path.Combine(Application.persistentDataPath, "users", CurrentUserOrGuest);
+
+    private static string SavePath =>
+        Path.Combine(UserRoot, "single_slot_party_save.txt");
+
+    private static void EnsureUserFolder()
+    {
+        if (!Directory.Exists(UserRoot))
+            Directory.CreateDirectory(UserRoot);
+    }
+
+    // Save the current party to disk (single slot per user)
     static public void SavePartyButtonPressed()
     {
-        if (GameContent.partyCharacters == null ||
-            GameContent.partyCharacters.Count == 0) return;
+        if (GameContent.partyCharacters == null || GameContent.partyCharacters.Count == 0)
+        {
+            Debug.Log("Nothing to save (party is empty).");
+            return;
+        }
 
         try
         {
-            // StreamWriter writes text to a file
+            EnsureUserFolder();
             using (var sw = new StreamWriter(SavePath, false))
             {
                 sw.WriteLine(GameContent.partyCharacters.Count);
@@ -98,32 +76,34 @@ static public class AssignmentPart1
 
                     int eqCount = pc.equipment != null ? pc.equipment.Count : 0;
                     sw.Write($" {eqCount}");
-                    foreach (int eq in pc.equipment)
-                        sw.Write($" {eq}");
+                    if (pc.equipment != null)
+                        foreach (int eq in pc.equipment) sw.Write($" {eq}");
 
                     sw.WriteLine();
                 }
             }
-            Debug.Log($"Party saved to {SavePath}");
+            Debug.Log($"[Part1] Party saved for user '{CurrentUserOrGuest}' to {SavePath}");
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"Save failed: {e.Message}");
+            Debug.LogError($"[Part1] Save failed: {e.Message}");
         }
     }
 
-    // Load the party back from disk
+    // Load the party back from disk (if no file, start empty for new accounts)
     static public void LoadPartyButtonPressed()
     {
-        if (!File.Exists(SavePath))
-        {
-            Debug.LogWarning("No save file found.");
-            return;
-        }
-
         try
         {
-            // StreamReader reads text back line by line
+            EnsureUserFolder();
+            if (!File.Exists(SavePath))
+            {
+                Debug.Log($"[Part1] No single-slot save for user '{CurrentUserOrGuest}'. Starting empty.");
+                GameContent.partyCharacters = new LinkedList<PartyCharacter>();
+                GameContent.RefreshUI();
+                return;
+            }
+
             using (var sr = new StreamReader(SavePath))
             {
                 GameContent.partyCharacters = new LinkedList<PartyCharacter>();
@@ -150,70 +130,71 @@ static public class AssignmentPart1
                 }
             }
             GameContent.RefreshUI();
-            Debug.Log("Party loaded.");
+            Debug.Log($"[Part1] Party loaded for user '{CurrentUserOrGuest}'.");
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"Load failed: {e.Message}");
+            Debug.LogError($"[Part1] Load failed: {e.Message}");
+        }
+    }
+
+    // --- delete the current user's single-slot saved party file (if any) ---
+    public static void DeleteCurrentUserPartySave()
+    {
+        try
+        {
+            EnsureUserFolder();
+            if (File.Exists(SavePath))
+            {
+                File.Delete(SavePath);
+                Debug.Log($"[Part1] Deleted existing single-slot party save for '{CurrentUserOrGuest}'.");
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"[Part1] Could not delete save for '{CurrentUserOrGuest}': {e.Message}");
         }
     }
 }
-
-
-
 #endregion
 
-
 #region Assignment Part 2
-
-//  Before Proceeding!
-//  To inform the internal systems that you are proceeding onto the second part of this assignment,
-//  change the below value of AssignmentConfiguration.PartOfAssignmentInDevelopment from 1 to 2.
-//  This will enable the needed UI/function calls for your to proceed with your assignment.
+//  Enable Part 2 UI
 static public class AssignmentConfiguration
 {
-    public const int PartOfAssignmentThatIsInDevelopment = 2;  // enable Part 2 (dropdown + save/load/delete by name)
+    public static int PartOfAssignmentThatIsInDevelopment = 2;  // dropdown + save/load/delete by name
 }
 
 /*
-
-In this part of the assignment you are challenged to expand on the functionality that you have already created.  
-    You are being challenged to save, load and manage multiple parties.
-    You are being challenged to identify each party via a string name (a member of the Party class).
-
-To aid you in this challenge, the UI has been altered.  
-
-    The load button has been replaced with a drop down list.  
-    When this load party drop down list is changed, LoadPartyDropDownChanged(string selectedName) will be called.  
-    When this drop down is created, it will be populated with the return value of GetListOfPartyNames().
-
-    GameStart() is called when the program starts.
-
-    For quality of life, a new SavePartyButtonPressed() has been provided to you below.
-
-    An new/delete button has been added, you will also find below NewPartyButtonPressed() and DeletePartyButtonPressed()
-
-Again, you are being challenged to develop the ability to save and load multiple parties.
-    This challenge is different from the previous.
-    In the above challenge, what you had to develop was much more directly named.
-    With this challenge however, there is a much more predicate process required.
-    Let me ask you,
-        What do you need to program to produce the saving, loading and management of multiple parties?
-        What are the variables that you will need to declare?
-        What are the things that you will need to do?  
-    So much of development is just breaking problems down into smaller parts.
-    Take the time to name each part of what you will create and then, do it.
-
-Good luck, journey well.
-
+Part 2: per-user multi-save system (dropdown of named parties)
 */
 
 static public class AssignmentPart2
 {
-    // ---- storage layout ----
-    private static string Root => Application.persistentDataPath;
-    private static string IndexPath => Path.Combine(Root, "party_index.txt"); // list of names
-    private static string FileFor(string name) => Path.Combine(Root, $"party_{Hash(name)}.txt");
+    // ---- per-user storage layout ----
+    private static string Safe(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "guest";
+        foreach (var bad in Path.GetInvalidFileNameChars())
+            s = s.Replace(bad, '_');
+        return s.Trim();
+    }
+    private static string CurrentUserOrGuest => Safe(LoginManager.CurrentUser);
+
+    private static string UserRoot =>
+        Path.Combine(Application.persistentDataPath, "users", CurrentUserOrGuest);
+
+    private static string IndexPath =>
+        Path.Combine(UserRoot, "party_index.txt"); // list of party names for THIS user
+
+    private static string FileFor(string name) =>
+        Path.Combine(UserRoot, $"party_{Hash(name)}.txt"); // party files for THIS user
+
+    private static void EnsureUserFolder()
+    {
+        if (!Directory.Exists(UserRoot))
+            Directory.CreateDirectory(UserRoot);
+    }
 
     // name -> file mapping via stable hash (safe for any characters, incl commas)
     private static string Hash(string s)
@@ -227,9 +208,10 @@ static public class AssignmentPart2
 
     static List<string> listOfPartyNames;
 
-    // ---- index helpers (keeps it simple, one name per line) ----
+    // ---- index helpers (one name per line) ----
     private static void LoadIndex()
     {
+        EnsureUserFolder();
         listOfPartyNames = new List<string>();
         if (!File.Exists(IndexPath)) return;
         foreach (var line in File.ReadAllLines(IndexPath))
@@ -241,6 +223,7 @@ static public class AssignmentPart2
 
     private static void SaveIndex()
     {
+        EnsureUserFolder();
         using var sw = new StreamWriter(IndexPath, false);
         foreach (var name in listOfPartyNames)
             sw.WriteLine(name);
@@ -249,6 +232,7 @@ static public class AssignmentPart2
     // ---- party (de)serialization: same text format as Part 1 ----
     private static void WriteParty(string path)
     {
+        EnsureUserFolder();
         using var sw = new StreamWriter(path, false);
         sw.WriteLine(GameContent.partyCharacters?.Count ?? 0);
         if (GameContent.partyCharacters == null) return;
@@ -258,7 +242,8 @@ static public class AssignmentPart2
             sw.Write($"{pc.classID} {pc.health} {pc.mana} {pc.strength} {pc.agility} {pc.wisdom}");
             int eqCount = pc.equipment?.Count ?? 0;
             sw.Write($" {eqCount}");
-            foreach (int eq in pc.equipment) sw.Write($" {eq}");
+            if (pc.equipment != null)
+                foreach (int eq in pc.equipment) sw.Write($" {eq}");
             sw.WriteLine();
         }
     }
@@ -290,7 +275,7 @@ static public class AssignmentPart2
     // ---- UI entry points ----
     static public void GameStart()
     {
-        LoadIndex();             // populate dropdown from disk
+        LoadIndex();             // populate dropdown from *this user's* disk
         GameContent.RefreshUI();
     }
 
@@ -301,7 +286,7 @@ static public class AssignmentPart2
         var path = FileFor(selectedName);
         if (!File.Exists(path))
         {
-            Debug.LogWarning($"Party file missing for '{selectedName}'.");
+            Debug.LogWarning($"[Part2] Party file missing for '{selectedName}' (user '{CurrentUserOrGuest}').");
             return;
         }
         try
@@ -311,7 +296,7 @@ static public class AssignmentPart2
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"Load failed: {e.Message}");
+            Debug.LogError($"[Part2] Load failed: {e.Message}");
         }
     }
 
@@ -320,7 +305,7 @@ static public class AssignmentPart2
         string name = GameContent.GetPartyNameFromInput()?.Trim();
         if (string.IsNullOrEmpty(name))
         {
-            Debug.LogWarning("Enter a party name before saving.");
+            Debug.LogWarning("[Part2] Enter a party name before saving.");
             return;
         }
 
@@ -330,16 +315,16 @@ static public class AssignmentPart2
             if (!listOfPartyNames.Contains(name))
             {
                 listOfPartyNames.Add(name);
-                SaveIndex();     // StreamWriter index
+                SaveIndex();     // update per-user index
             }
 
-            WriteParty(FileFor(name)); // StreamWriter party
+            WriteParty(FileFor(name)); // save the named party for this user
             GameContent.RefreshUI();
-            Debug.Log($"Saved party '{name}'.");
+            Debug.Log($"[Part2] Saved party '{name}' for user '{CurrentUserOrGuest}'.");
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"Save failed: {e.Message}");
+            Debug.LogError($"[Part2] Save failed: {e.Message}");
         }
     }
 
@@ -348,7 +333,7 @@ static public class AssignmentPart2
         string name = GameContent.GetPartyNameFromInput()?.Trim();
         if (string.IsNullOrEmpty(name))
         {
-            Debug.LogWarning("Enter the party name you want to delete.");
+            Debug.LogWarning("[Part2] Enter the party name you want to delete.");
             return;
         }
 
@@ -361,18 +346,15 @@ static public class AssignmentPart2
             // remove from index
             if (listOfPartyNames.Remove(name)) SaveIndex();
 
-            // optional: clear current party
+            // optional: clear current party after delete
             GameContent.partyCharacters = new LinkedList<PartyCharacter>();
             GameContent.RefreshUI();
-            Debug.Log($"Deleted party '{name}'.");
+            Debug.Log($"[Part2] Deleted party '{name}' for user '{CurrentUserOrGuest}'.");
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"Delete failed: {e.Message}");
+            Debug.LogError($"[Part2] Delete failed: {e.Message}");
         }
     }
 }
-
 #endregion
-
-

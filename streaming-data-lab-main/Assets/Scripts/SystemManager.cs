@@ -195,9 +195,12 @@ public class SystemManager : MonoBehaviour
 
     public void LoadDropDownChanged()
     {
+        AssignmentPart1.DeleteCurrentUserPartySave();
+
         int menuIndex = loadPartyDropDown.GetComponent<Dropdown>().value;
         List<Dropdown.OptionData> menuOptions = loadPartyDropDown.GetComponent<Dropdown>().options;
         string value = menuOptions[menuIndex].text;
+
         AssignmentPart2.LoadPartyDropDownChanged(value);
     }
 
